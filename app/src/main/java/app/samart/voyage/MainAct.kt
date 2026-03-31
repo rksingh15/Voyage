@@ -1,11 +1,14 @@
 package app.samart.voyage
 
 import android.annotation.SuppressLint
+import android.app.Dialog
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.os.Message
+
 import android.webkit.*
+
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 
@@ -22,92 +25,63 @@ class MainAct : AppCompatActivity() {
         webView = findViewById(R.id.webView)
 
         val settings = webView.settings
-
-        // Basic settings
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
-        settings.allowFileAccess = true
-        settings.databaseEnabled = true
-        settings.loadWithOverviewMode = true
-        settings.useWideViewPort = true
-        settings.setSupportZoom(true)
-
-        //  User Agent change is CRITICAL for Google Login to work in WebView
-        // Using a Chrome-like user agent to avoid "Access Blocked: Authorization Error"
-        settings.userAgentString = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36"
-
-        //  Enable popup support (window.open)
-        settings.setSupportMultipleWindows(true)
+        settings.setSupportMultipleWindows(true) // Multiple windows enable karein
         settings.javaScriptCanOpenWindowsAutomatically = true
 
-        //  WebViewClient to handle regular links
+        //  Google Login Fix: Ye User Agent Google ko secure lagta hai
+        settings.userAgentString = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36"
+
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url.toString()
-                return handleUrl(url)
-            }
-
-            @Deprecated("Deprecated in Java")
-            override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
-                return handleUrl(url ?: "")
-            }
-
-            private fun handleUrl(url: String): Boolean {
-                // If it's a login provider or external site, open in browser
-                // This ensures Google Sign-in works exactly like in a browser
-                if (url.contains("accounts.google.com") || 
-                    url.contains("googleusercontent.com") || 
-                    url.contains("facebook.com") || 
-                    url.contains("oauth") || 
-                    url.contains("signin") ||
-                    (!url.contains("planwithvoyage.vercel.app") && url.startsWith("http"))) {
-                    
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                    startActivity(intent)
+                // External links browser mein khulenge
+                if (url.startsWith("http") && !url.contains("planwithvoyage.vercel.app") &&
+                    !url.contains("google.com")) {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                     return true
                 }
-                return false // Load inside WebView
+                return false
             }
         }
 
-        // 🔥 WebChromeClient to handle window.open()
+        // POPUP WINDOW HANDLING (Google Login ke liye)
         webView.webChromeClient = object : WebChromeClient() {
-            override fun onCreateWindow(
-                view: WebView?,
-                isDialog: Boolean,
-                isUserGesture: Boolean,
-                resultMsg: Message?
-            ): Boolean {
-                // Create a temporary WebView to capture the URL from the popup and open it in the browser
+            override fun onCreateWindow(view: WebView?, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message?): Boolean {
                 val newWebView = WebView(this@MainAct)
-                newWebView.webViewClient = object : WebViewClient() {
-                    override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                        val url = request?.url.toString()
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                        startActivity(intent)
-                        return true
-                    }
+                setupWebView(newWebView)
 
-                    @Deprecated("Deprecated in Java")
-                    override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url ?: ""))
-                        startActivity(intent)
-                        return true
+                // Popup ko ek Dialog mein dikhayenge
+                val dialog = Dialog(this@MainAct, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+                dialog.setContentView(newWebView)
+                dialog.show()
+
+                newWebView.webChromeClient = object : WebChromeClient() {
+                    override fun onCloseWindow(window: WebView?) {
+                        dialog.dismiss() // Login khatam hote hi popup band
                     }
                 }
 
-                val transport = resultMsg?.obj as? WebView.WebViewTransport
-                transport?.webView = newWebView
-                resultMsg?.sendToTarget()
+                val transport = resultMsg?.obj as WebView.WebViewTransport
+                transport.webView = newWebView
+                resultMsg.sendToTarget()
                 return true
             }
         }
 
-        // Load the website
         webView.loadUrl("https://planwithvoyage.vercel.app/")
     }
 
-    // Handle back button
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun setupWebView(wv: WebView) {
+        val s = wv.settings
+        s.javaScriptEnabled = true
+        s.domStorageEnabled = true
+        s.userAgentString = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36"
+        wv.webViewClient = WebViewClient()
+    }
+
     override fun onBackPressed() {
         if (webView.canGoBack()) {
             webView.goBack()
